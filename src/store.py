@@ -14,11 +14,15 @@ class VectorStore:
         self._next_id = 0
 
     def add_documents(self, docs: List[Dict[str, str]], embeddings):
-        # docs: list of {'text':..., 'id': optional}
+        # docs: list of {'text':..., 'id': optional, 'page': optional}
         for doc, emb in zip(docs, embeddings):
             idx = self._next_id
             self.index.add_item(idx, emb.tolist() if hasattr(emb, "tolist") else emb)
-            self._id_to_meta[idx] = {"text": doc.get("text"), "source_id": doc.get("id")}
+            self._id_to_meta[idx] = {
+                "text": doc.get("text"),
+                "source_id": doc.get("id"),
+                "page": doc.get("page"),
+            }
             self._next_id += 1
 
     def build(self, n_trees: int = 10):
@@ -47,5 +51,13 @@ class VectorStore:
         results = []
         for i, d in zip(ids, distances):
             meta = self._id_to_meta.get(i, {})
-            results.append({"id": i, "score": float(d), "text": meta.get("text"), "source_id": meta.get("source_id")})
+            results.append(
+                {
+                    "id": i,
+                    "score": float(d),
+                    "text": meta.get("text"),
+                    "source_id": meta.get("source_id"),
+                    "page": meta.get("page"),
+                }
+            )
         return results

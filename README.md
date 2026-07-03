@@ -13,6 +13,9 @@ Run the app:
 uvicorn src.app:app --reload
 ```
 
+powershell
+.\.venv\Scripts\uvicorn.exe src.app:app --reload
+
 Endpoints:
 - `POST /ingest_pdf` — multipart file upload to ingest PDF
 - `GET /query?q=...&k=5` — retrieve top-k chunks

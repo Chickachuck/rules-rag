@@ -44,16 +44,19 @@ async def ingest_pdf(file: UploadFile = File(...)):
     tmp.write(contents)
     tmp.close()
     try:
-        text = extract_text_from_pdf(tmp.name)
-        chunks = chunk_text(text)
+        page_records = extract_text_from_pdf(tmp.name)
+        chunks = chunk_text(page_records)
         model = get_model()
-        embeddings = model.embed_texts(chunks)
-        docs = [{"text": c} for c in chunks]
+        embeddings = model.embed_texts([chunk["text"] for chunk in chunks])
+        docs = [
+            {"text": chunk["text"], "page": chunk["page"], "id": file.filename}
+            for chunk in chunks
+        ]
         store = get_store()
         store.add_documents(docs, embeddings)
         store.build()
         store.save()
-        return JSONResponse({"ingested_chunks": len(chunks)})
+        return JSONResponse({"ingested_chunks": len(chunks), "source_id": file.filename})
     finally:
         try:
             os.unlink(tmp.name)
