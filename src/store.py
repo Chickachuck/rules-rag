@@ -1,7 +1,7 @@
 import json
 from annoy import AnnoyIndex
 import os
-from typing import List, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 class VectorStore:
@@ -10,11 +10,11 @@ class VectorStore:
         self.index_path = index_path
         self.meta_path = index_path + ".meta.json"
         self.index = AnnoyIndex(dim, "angular")
-        self._id_to_meta: Dict[int, Dict] = {}
+        self._id_to_meta: Dict[int, Dict[str, Any]] = {}
         self._next_id = 0
 
-    def add_documents(self, docs: List[Dict[str, str]], embeddings):
-        # docs: list of {'text':..., 'id': optional, 'page': optional}
+    def add_documents(self, docs: List[Dict[str, Any]], embeddings):
+        # docs: list of {'text':..., 'id': optional, 'page': optional, 'chapter': optional}
         for doc, emb in zip(docs, embeddings):
             idx = self._next_id
             self.index.add_item(idx, emb.tolist() if hasattr(emb, "tolist") else emb)
@@ -22,6 +22,9 @@ class VectorStore:
                 "text": doc.get("text"),
                 "source_id": doc.get("id"),
                 "page": doc.get("page"),
+                "start_page": doc.get("start_page"),
+                "end_page": doc.get("end_page"),
+                "chapter": doc.get("chapter"),
             }
             self._next_id += 1
 
@@ -58,6 +61,9 @@ class VectorStore:
                     "text": meta.get("text"),
                     "source_id": meta.get("source_id"),
                     "page": meta.get("page"),
+                    "start_page": meta.get("start_page"),
+                    "end_page": meta.get("end_page"),
+                    "chapter": meta.get("chapter"),
                 }
             )
         return results

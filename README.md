@@ -13,8 +13,11 @@ Run the app:
 uvicorn src.app:app --reload
 ```
 
-powershell
+PowerShell:
+
+```powershell
 .\.venv\Scripts\uvicorn.exe src.app:app --reload
+```
 
 Endpoints:
 - `POST /ingest_pdf` — multipart file upload to ingest PDF

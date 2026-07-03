@@ -49,7 +49,14 @@ async def ingest_pdf(file: UploadFile = File(...)):
         model = get_model()
         embeddings = model.embed_texts([chunk["text"] for chunk in chunks])
         docs = [
-            {"text": chunk["text"], "page": chunk["page"], "id": file.filename}
+            {
+                "text": chunk["text"],
+                "page": chunk.get("page"),
+                "start_page": chunk.get("start_page"),
+                "end_page": chunk.get("end_page"),
+                "chapter": chunk.get("chapter"),
+                "id": file.filename,
+            }
             for chunk in chunks
         ]
         store = get_store()
