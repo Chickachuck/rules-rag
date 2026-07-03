@@ -1,9 +1,16 @@
 from pypdf import PdfReader
 from pypdf.generic import Destination
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
-def extract_chapters(reader: PdfReader) -> Dict[int, List[str]]:
+def path_titles(path: List[str]) -> List[str]:
+    titles: List[str] = []
+    for i in range(1, len(path) + 1):
+        titles.append(" - ".join(path[:i]))
+    return titles
+
+
+def extract_chapters(reader: PdfReader) -> Tuple[Dict[int, List[str]], Dict[int, List[List[str]]]]:
     outline = getattr(reader, "outline", None)
     if callable(outline):
         try:
@@ -11,7 +18,7 @@ def extract_chapters(reader: PdfReader) -> Dict[int, List[str]]:
         except Exception:
             outline = None
     if not outline:
-        return {}
+        return {}, {}
 
     chapters: List[tuple[int, List[str]]] = []
 
@@ -49,18 +56,12 @@ def extract_chapters(reader: PdfReader) -> Dict[int, List[str]]:
 
     walk(outline)
     if not chapters:
-        return {}
+        return {}, {}
 
     chapters.sort(key=lambda x: x[0])
     starts: Dict[int, List[List[str]]] = {}
     for page_number, path in chapters:
         starts.setdefault(page_number, []).append(path)
-
-    def path_titles(path: List[str]) -> List[str]:
-        titles: List[str] = []
-        for i in range(1, len(path) + 1):
-            titles.append(" - ".join(path[:i]))
-        return titles
 
     page_to_chapter: Dict[int, List[str]] = {}
     current_active: List[str] = []
@@ -79,12 +80,12 @@ def extract_chapters(reader: PdfReader) -> Dict[int, List[str]]:
             page_to_chapter[page_number] = current_active.copy()
         else:
             page_to_chapter[page_number] = []
-    return page_to_chapter
+    return page_to_chapter, starts
 
 
 def extract_text_from_pdf(path: str) -> List[Dict[str, Union[int, str, None, List[str]]]]:
     reader = PdfReader(path)
-    chapter_map = extract_chapters(reader)
+    chapter_map, starts_map = extract_chapters(reader)
     pages = []
     for page_number, page in enumerate(reader.pages, start=1):
         text = page.extract_text() or ""
@@ -93,9 +94,77 @@ def extract_text_from_pdf(path: str) -> List[Dict[str, Union[int, str, None, Lis
                 "page": page_number,
                 "text": text,
                 "chapter": chapter_map.get(page_number, []),
+                "starts": starts_map.get(page_number, []),
             }
         )
     return pages
+
+
+def split_page_into_chapter_segments(page: Dict[str, Any]) -> List[Dict[str, Any]]:
+    text = page.get("text", "") or ""
+    if not text:
+        return []
+
+    starts = page.get("starts", []) or []
+    if not starts:
+        if page.get("chapter"):
+            return [
+                {
+                    "page": page["page"],
+                    "text": text,
+                    "chapter": page.get("chapter", []),
+                    "start_page": page["page"],
+                    "end_page": page["page"],
+                }
+            ]
+        return []
+
+    header_candidates: List[tuple[str, List[str]]] = []
+    seen_headers: set = set()
+    for path in starts:
+        full_header = " - ".join(path)
+        if full_header not in seen_headers:
+            header_candidates.append((full_header, path))
+            seen_headers.add(full_header)
+        last_header = path[-1]
+        if last_header not in seen_headers:
+            header_candidates.append((last_header, path))
+            seen_headers.add(last_header)
+
+    text_lower = text.lower()
+    occurrences: List[tuple[int, str, List[str]]] = []
+    for header, path in sorted(header_candidates, key=lambda item: len(item[0]), reverse=True):
+        idx = text_lower.find(header.lower())
+        if idx >= 0:
+            occurrences.append((idx, header, path))
+
+    occurrences.sort(key=lambda x: x[0])
+    if not occurrences:
+        return []
+
+    segments: List[Dict[str, Any]] = []
+    for index, (idx, header, path) in enumerate(occurrences):
+        next_idx = occurrences[index + 1][0] if index + 1 < len(occurrences) else len(text)
+        segment_text = text[idx:next_idx].strip()
+        if not segment_text:
+            continue
+        segments.append(
+            {
+                "page": page["page"],
+                "text": segment_text,
+                "chapter": path_titles(path),
+                "start_page": page["page"],
+                "end_page": page["page"],
+            }
+        )
+    return segments
+
+
+def split_pages_into_chapter_segments(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    segments: List[Dict[str, Any]] = []
+    for page in pages:
+        segments.extend(split_page_into_chapter_segments(page))
+    return segments
 
 
 def chunk_text(
@@ -120,28 +189,33 @@ def chunk_text(
     pages = text_or_pages
     if not pages:
         return []
-    chunks: List[Dict[str, Union[int, str, None, List[str]]]] = []
-    groups: List[tuple[List[str], List[Dict[str, Union[int, str, None, List[str]]]]]] = []
-    current_chapter = pages[0].get("chapter", []) or []
-    current_group: List[Dict[str, Union[int, str, None, List[str]]]] = []
 
-    for page in pages:
-        page_chapter = page.get("chapter", []) or []
-        if page_chapter != current_chapter and current_group:
+    segments = split_pages_into_chapter_segments(pages)
+    if not segments:
+        return []
+
+    chunks: List[Dict[str, Union[int, str, None, List[str]]]] = []
+    groups: List[tuple[List[str], List[Dict[str, Any]]]] = []
+    current_chapter = segments[0].get("chapter", []) or []
+    current_group: List[Dict[str, Any]] = []
+
+    for segment in segments:
+        segment_chapter = segment.get("chapter", []) or []
+        if segment_chapter != current_chapter and current_group:
             groups.append((current_chapter, current_group))
             current_group = []
-            current_chapter = page_chapter
-        current_group.append(page)
+            current_chapter = segment_chapter
+        current_group.append(segment)
     if current_group:
         groups.append((current_chapter, current_group))
 
     for chapter, group in groups:
         page_tokens: List[str] = []
         token_pages: List[int] = []
-        for page in group:
-            tokens = (page.get("text", "") or "").split()
+        for segment in group:
+            tokens = (segment.get("text", "") or "").split()
             page_tokens.extend(tokens)
-            token_pages.extend([page["page"]] * len(tokens))
+            token_pages.extend([segment["page"]] * len(tokens))
         start = 0
         while start < len(page_tokens):
             end = min(start + chunk_size, len(page_tokens))
