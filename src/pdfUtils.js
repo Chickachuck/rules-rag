@@ -1,10 +1,25 @@
-const pdf = require('pdf-parse');
+let pdfjsLib;
+
+async function getPdfjsLib() {
+  if (!pdfjsLib) {
+    pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  }
+  return pdfjsLib;
+}
 
 async function extractPages(buffer) {
-  const data = await pdf(buffer);
-  const text = data.text || '';
-  const pages = text.split('\f').map((p) => p.trim()).filter(Boolean);
-  if (pages.length === 0 && text) return [text];
+  const pdfjs = await getPdfjsLib();
+  const uint8Array = new Uint8Array(buffer);
+  const loadingTask = pdfjs.getDocument({ data: uint8Array });
+  const pdfDoc = await loadingTask.promise;
+  const outline = await pdfDoc.getOutline();
+  const pages = [];
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const page = await pdfDoc.getPage(i);
+    const textContent = await page.getTextContent();
+    const pageText = textContent.items.map(item => item.str).join(' ');
+    pages.push(pageText.trim());
+  }
   return pages;
 }
 
