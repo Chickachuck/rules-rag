@@ -1,24 +1,38 @@
-Simple RAG service (FastAPI)
+ # rules-rag (Node.js port)
 
-Run tests:
+Minimal Node.js/Express port of the original FastAPI RAG service.
 
-```bash
-python -m pip install -r requirements.txt
-pytest -q
-```
-
-Run the app:
+Install and run
 
 ```bash
-uvicorn src.app:app --reload
+npm install
+npm start
 ```
 
-PowerShell:
+Run in development with autoreload (nodemon):
 
-```powershell
-.\.venv\Scripts\uvicorn.exe src.app:app --reload
+```bash
+npm run dev
 ```
 
-Endpoints:
-- `POST /ingest_pdf` — multipart file upload to ingest PDF
-- `GET /query?q=...&k=5` — retrieve top-k chunks
+Tests
+
+```bash
+npm test
+```
+
+Configuration
+
+- Set `OPENAI_API_KEY` to enable OpenAI embeddings; otherwise a local hashing fallback is used.
+- Data directory: `data/` (created automatically). The JSON-backed vector index is `data/js_ann.index.json`.
+
+API endpoints
+
+- `POST /ingest_pdf` — multipart form with `file` field (PDF upload)
+- `GET /query?q=...&k=5` — semantic search
+- `GET /health` — health check
+
+Notes
+
+- Tests are under `tests/` and use `jest` + `supertest`.
+- This repository has been ported to Node.js; Python sources were removed during the port.

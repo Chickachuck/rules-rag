@@ -1,36 +1,34 @@
 # AGENTS.md
 
 ## Purpose
-Simple Python FastAPI RAG service for ingesting PDF content, embedding text chunks with `sentence-transformers`, storing vectors in an Annoy index, and exposing semantic search over uploaded documents.
+Node.js (Express) RAG service for ingesting PDF content, embedding text chunks (OpenAI optional), storing vectors in a JSON-backed index, and exposing semantic search over uploaded documents.
 
 ## Install
 ```bash
-python -m pip install -r requirements.txt
+npm install
 ```
 
 ## Test
 ```bash
-pytest -q
+npm test
 ```
 
 ## Run
 ```bash
-uvicorn src.app:app --reload
+npm start
 ```
 
-Use `RAG_DATA_DIR` to change the persistence directory if needed.
-
 ## Key files
-- `src/app.py` — FastAPI app, endpoint definitions, lazy model/store initialization
-- `src/embeddings.py` — embedding wrapper using `SentenceTransformer`
-- `src/pdf_utils.py` — PDF text extraction, page-aware chunk splitting, and page metadata
-- `src/store.py` — Annoy vector store, save/load metadata, query logic
-- `requirements.txt` — dependency list
+- `src/server.js` — Express app and endpoints
+- `src/embeddings.js` — OpenAI embedding wrapper with fallback
+- `src/pdfUtils.js` — PDF text extraction and page-aware chunking
+- `src/store.js` — simple JSON-backed vector store and query logic
+- `package.json` — scripts and dependencies
 
 ## Metadata behavior
-- Each ingested chunk stores `text`, `page`, and `source_id` (the uploaded PDF filename)
-- The index metadata file is `data/ann.index.meta.json`
-- Query results return chunk `text`, `page`, and `source_id`
+- Each ingested chunk stores `text`, `page`, and `source_id` (the uploaded PDF filename).
+- The JSON index file is `data/js_ann.index.json` by default.
+- Query responses return chunk `text`, `page`, and `source_id` under `meta`.
 
 ## API endpoints
 - `POST /ingest_pdf` — upload a PDF file as `multipart/form-data`; extracts text, chunks pages, embeds chunks, stores vectors
@@ -39,7 +37,9 @@ Use `RAG_DATA_DIR` to change the persistence directory if needed.
 
 ## Persistence behavior
 - Default data directory: `data/`
-- Vector index file: `data/ann.index`
-- Metadata file: `data/ann.index.meta.json`
-- On ingest, new chunks are added, index is built, and both index + metadata are saved
-- The service reuses the same stored index on subsequent requests via `VectorStore`
+- Vector index file: `data/js_ann.index.json`
+- On ingest, new chunks are appended and the index file is re-written to persist updates
+
+## Notes
+- Tests use `jest` and `supertest` and live in `tests/`.
+- The repository was ported from a Python FastAPI implementation to Node.js — Python sources were removed.
