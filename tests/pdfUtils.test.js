@@ -12,13 +12,24 @@ test('chunkPage basic splits into chunks with <= max words', () => {
   expect(chunks.every((c) => c.split(/\s+/).length <= 200)).toBe(true);
 });
 
-test('extractPages returns page text for a multi-page PDF', async () => {
+test('extractPages returns chapters with page-aware content for a multi-page PDF', async () => {
   const pdfPath = path.join(__dirname, 'fixtures', 'test.pdf');
   const buffer = fs.readFileSync(pdfPath);
-  const pages = await extractPages(buffer);
-  expect(Array.isArray(pages)).toBe(true);
-  expect(pages.length).toBe(3);
-  expect(pages[0]).toContain('Page 1: This is the first page of the test PDF.');
-  expect(pages[1]).toContain('Page 2: This is the second page.');
-  expect(pages[2]).toContain('Page 3: Third page with special chars: cafe, naive, resume.');
+  const chapters = await extractPages(buffer);
+  expect(Array.isArray(chapters)).toBe(true);
+  expect(chapters.length).toBe(1);
+  const [chapter] = chapters;
+  expect(chapter).toEqual(expect.objectContaining({
+    name: expect.any(String),
+    path: expect.any(String),
+    text: expect.any(String),
+    pages: expect.any(Array),
+  }));
+  expect(chapter.pages).toHaveLength(3);
+  expect(chapter.pages[0]).toEqual(expect.objectContaining({ page: 1, text: expect.stringContaining('Page 1: This is the first page of the test PDF.') }));
+  expect(chapter.pages[1]).toEqual(expect.objectContaining({ page: 2, text: expect.stringContaining('Page 2: This is the second page.') }));
+  expect(chapter.pages[2]).toEqual(expect.objectContaining({ page: 3, text: expect.stringContaining('Page 3: Third page with special chars: cafe, naive, resume.') }));
+  expect(chapter.text).toContain('Page 1: This is the first page of the test PDF.');
+  expect(chapter.text).toContain('Page 2: This is the second page.');
+  expect(chapter.text).toContain('Page 3: Third page with special chars: cafe, naive, resume.');
 });

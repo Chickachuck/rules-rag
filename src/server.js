@@ -22,13 +22,14 @@ app.post('/ingest_pdf', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'file required' });
     const filename = req.file.originalname;
-    const pages = await extractPages(req.file.buffer);
+    const chapters = await extractPages(req.file.buffer);
     const chunks = [];
-    for (let i = 0; i < pages.length; i++) {
-      const page = pages[i];
-      const pageChunks = chunkPage(page, 500);
-      pageChunks.forEach((text) => chunks.push({ text, page: i + 1 }));
-    }
+    chapters.forEach((chapter) => {
+      chapter.pages.forEach(({ page, text }) => {
+        const pageChunks = chunkPage(text, 500);
+        pageChunks.forEach((chunkText) => chunks.push({ text: chunkText, page }));
+      });
+    });
     await store.addChunks(chunks, filename, embeddings);
     res.json({ ingested: chunks.length });
   } catch (err) {
