@@ -12,24 +12,19 @@ test('chunkPage basic splits into chunks with <= max words', () => {
   expect(chunks.every((c) => c.split(/\s+/).length <= 200)).toBe(true);
 });
 
-test('extractPages returns chapters with page-aware content for a multi-page PDF', async () => {
+test('extractPages returns separate chapters when multiple chapters start on the same page', async () => {
   const pdfPath = path.join(__dirname, 'fixtures', 'test.pdf');
   const buffer = fs.readFileSync(pdfPath);
   const chapters = await extractPages(buffer);
+
   expect(Array.isArray(chapters)).toBe(true);
-  expect(chapters.length).toBe(1);
-  const [chapter] = chapters;
-  expect(chapter).toEqual(expect.objectContaining({
-    name: expect.any(String),
-    path: expect.any(String),
-    text: expect.any(String),
-    pages: expect.any(Array),
-  }));
-  expect(chapter.pages).toHaveLength(3);
-  expect(chapter.pages[0]).toEqual(expect.objectContaining({ page: 1, text: expect.stringContaining('Page 1: This is the first page of the test PDF.') }));
-  expect(chapter.pages[1]).toEqual(expect.objectContaining({ page: 2, text: expect.stringContaining('Page 2: This is the second page.') }));
-  expect(chapter.pages[2]).toEqual(expect.objectContaining({ page: 3, text: expect.stringContaining('Page 3: Third page with special chars: cafe, naive, resume.') }));
-  expect(chapter.text).toContain('Page 1: This is the first page of the test PDF.');
-  expect(chapter.text).toContain('Page 2: This is the second page.');
-  expect(chapter.text).toContain('Page 3: Third page with special chars: cafe, naive, resume.');
+  expect(chapters).toHaveLength(3);
+  expect(chapters.map((chapter) => chapter.name)).toEqual(['Chapter One', 'Chapter Two', 'Chapter Three']);
+  expect(chapters[0].pages).toHaveLength(1);
+  expect(chapters[1].pages).toHaveLength(2);
+  expect(chapters[2].pages).toHaveLength(1);
+  expect(chapters[0].pages[0].text).toEqual('Chapter One This is the content for Chapter One.');
+  expect(chapters[1].pages[0].text).toEqual('Chapter Two This is the content for Chapter Two.');
+  expect(chapters[1].pages[1].text).toEqual('Page 2: Continuation of chapters.');
+  expect(chapters[2].pages[0].text).toEqual('Chapter Three This is the content for Chapter Three on the third page.');
 });

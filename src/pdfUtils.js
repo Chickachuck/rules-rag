@@ -21,6 +21,110 @@ function createFallbackChapter(pageEntries) {
   };
 }
 
+function buildChaptersFromEntries(pageEntries, chapterDefinitions) {
+  const sortedDefinitions = chapterDefinitions
+    .filter((chapter) => Number.isInteger(chapter.page) && chapter.page > 0)
+    .map((chapter, index) => ({ ...chapter, index }))
+    .sort((a, b) => a.page - b.page || a.index - b.index);
+
+  if (sortedDefinitions.length === 0) {
+    return [createFallbackChapter(pageEntries)];
+  }
+
+  const lastPage = pageEntries.length > 0 ? pageEntries[pageEntries.length - 1].page : 0;
+  const chapters = sortedDefinitions.map((chapter, index) => {
+    const nextChapter = sortedDefinitions[index + 1];
+    
+    // Determine end page for this chapter
+    // If next chapter starts on the same page, this chapter only gets that page
+    // If next chapter starts on a later page, this chapter gets pages up to that page
+    // If no next chapter, this chapter gets all remaining pages
+    let endPage;
+    if (nextChapter) {
+      if (nextChapter.page === chapter.page) {
+        // Next chapter starts on same page - this chapter only gets this page
+        endPage = chapter.page + 1;
+      } else {
+        // Next chapter starts on a later page
+        endPage = nextChapter.page;
+      }
+    } else {
+      // Last chapter gets all remaining pages
+      endPage = lastPage + 1;
+    }
+    
+    // Get all pages for this chapter's range
+    const chapterPageEntries = pageEntries
+      .filter(({ page }) => page >= chapter.page && page < endPage);
+    
+    // If multiple chapters start on the same page, we need to split the first page's content
+    const pages = [];
+    for (let i = 0; i < chapterPageEntries.length; i++) {
+      const entry = chapterPageEntries[i];
+      const pageNum = entry.page;
+      let text = entry.text;
+      
+      // If this is the first page of the chapter and multiple chapters start on this page,
+      // split the text at the chapter heading
+      if (i === 0 && pageNum === chapter.page) {
+        // Check if there are other chapters starting on the same page
+        const samePageChapters = sortedDefinitions.filter(c => c.page === chapter.page);
+        if (samePageChapters.length > 1) {
+          // Find this chapter's index among same-page chapters
+          const chapterIndex = samePageChapters.findIndex(c => c.index === chapter.index);
+          if (chapterIndex >= 0) {
+            // Split the text at chapter headings
+            const headings = samePageChapters.map(c => c.title);
+            text = splitTextAtHeadings(text, headings, chapterIndex);
+          }
+        }
+      }
+      
+      pages.push({ page: pageNum, text });
+    }
+    
+    const chapterText = pages.map(({ text }) => text).filter(Boolean).join('\n\n').trim();
+
+    return {
+      name: chapter.title,
+      path: chapter.path,
+      pages,
+      text: chapterText,
+    };
+  });
+
+  return chapters.length > 0 ? chapters : [createFallbackChapter(pageEntries)];
+}
+
+function splitTextAtHeadings(text, headings, targetIndex) {
+  // Find all heading positions in the text
+  const positions = [];
+  for (const heading of headings) {
+    const index = text.indexOf(heading);
+    if (index !== -1) {
+      positions.push({ heading, index });
+    }
+  }
+  
+  // Sort by position in text
+  positions.sort((a, b) => a.index - b.index);
+  
+  if (positions.length === 0) {
+    return text;
+  }
+  
+  // If target heading not found in text, return original
+  const targetPos = positions.find(p => p.heading === headings[targetIndex]);
+  if (!targetPos) {
+    return text;
+  }
+  
+  const startIndex = targetPos.index;
+  const endIndex = targetIndex < positions.length - 1 ? positions[targetIndex + 1].index : text.length;
+  
+  return text.substring(startIndex, endIndex).trim();
+}
+
 function flattenOutline(outline, parentPath = []) {
   if (!Array.isArray(outline)) return [];
   const chapters = [];
@@ -103,56 +207,7 @@ async function extractPages(buffer) {
     return [createFallbackChapter(pageEntries)];
   }
 
-  const sortedDefinitions = chapterDefinitions
-    .filter((chapter) => Number.isInteger(chapter.page) && chapter.page > 0)
-    .sort((a, b) => a.page - b.page);
-
-  if (sortedDefinitions.length === 0) {
-    return [createFallbackChapter(pageEntries)];
-  }
-
-  const chapters = [];
-  let currentChapter = null;
-  let currentPages = [];
-  let currentText = [];
-
-  for (let i = 1; i <= pdfDoc.numPages; i++) {
-    const pageEntry = pageEntries[i - 1];
-    const chapterForPage = sortedDefinitions.find((chapter) => chapter.page === i);
-    const headerTitle = pageEntry.headers.find((header) => chapterForPage?.title === header);
-    const shouldStartNewChapter = Boolean(chapterForPage) && Boolean(headerTitle);
-
-    if (shouldStartNewChapter && currentChapter) {
-      chapters.push({
-        name: currentChapter.title,
-        path: currentChapter.path,
-        pages: currentPages,
-        text: currentText.join('\n\n').trim(),
-      });
-      currentPages = [];
-      currentText = [];
-    }
-
-    if (shouldStartNewChapter || (!currentChapter && chapterForPage)) {
-      currentChapter = chapterForPage;
-    }
-
-    if (currentChapter) {
-      currentPages.push({ page: pageEntry.page, text: pageEntry.text });
-      currentText.push(pageEntry.text);
-    }
-  }
-
-  if (currentChapter) {
-    chapters.push({
-      name: currentChapter.title,
-      path: currentChapter.path,
-      pages: currentPages,
-      text: currentText.join('\n\n').trim(),
-    });
-  }
-
-  return chapters.length > 0 ? chapters : [createFallbackChapter(pageEntries)];
+  return buildChaptersFromEntries(pageEntries, chapterDefinitions);
 }
 
 function chunkPage(text, maxLen = 500) {
@@ -171,4 +226,4 @@ function chunkPage(text, maxLen = 500) {
   return chunks;
 }
 
-module.exports = { extractPages, chunkPage };
+module.exports = { extractPages, chunkPage, buildChaptersFromEntries };
